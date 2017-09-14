@@ -33,9 +33,16 @@ unless(@repos){
     }
 }
 my $parent_pid = $$;
+my $children = 0;
 foreach my $repo (@repos) {
     my $child_pid = $p ? fork : 0;
-    unless ($child_pid) {
+    if ($child_pid) {
+        $children++;
+    }
+    elsif (! defined $child_pid) {
+        die "failed to fork";
+    }
+    else {
         chdir "$wd/$repo" or die "failed to chdir $wd/$repo";
         my @this_args = @args;
         map {s/_REPO_/$repo/} @this_args;
@@ -61,3 +68,5 @@ foreach my $repo (@repos) {
             unless $parent_pid == $$;
     }
 }
+
+wait for 1 .. $children;
