@@ -19,6 +19,10 @@ while (my $str = pop @args) {
     }
     elsif ($str eq '-p') {
         $p = 1;
+
+        # -p implies -k because it doesn't make sense to try to stop
+        # the child processes mid-way through the repo loop
+        $k = 1;
     }
     else {
         push @args, $str;
