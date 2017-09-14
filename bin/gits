@@ -4,7 +4,7 @@ use Cwd;
 my $wd = getcwd;
 my @args = @ARGV;
 my $command = shift @args;
-my ($k, $v);
+my ($k, $v, $p);
 my @repos;
 while (my $str = pop @args) {
     if (-d $str && -d "$str/.git") {
@@ -16,6 +16,9 @@ while (my $str = pop @args) {
     }
     elsif ($str eq '-v') {
         $v = 1;
+    }
+    elsif ($str eq '-p') {
+        $p = 1;
     }
     else {
         push @args, $str;
@@ -29,26 +32,32 @@ unless(@repos){
         }
     }
 }
+my $parent_pid = $$;
 foreach my $repo (@repos) {
-    chdir "$wd/$repo" or die "failed to chdir $wd/$repo";
-    my @this_args = @args;
-    map {s/_REPO_/$repo/} @this_args;
-    open(EXEC, '-|', 'git', split(/ /, $command), @this_args);
-    my $o = '';
-    while (<EXEC>) {
-        chomp($_);
-        my $trimmed = substr($_, 0, 250);
-        $trimmed .= '...'
-            if !$v && length($trimmed) < length($_);
-        $o .= "$trimmed\n";
-    }
-    close(EXEC);
-    if ($? && $k) {
-        print "error: $?\n" if $v;
-        next;
-    }
-    else {
-        print "=================== $repo ===================\n$o\n";
-        die $? if $?;
+    my $child_pid = $p ? fork : 0;
+    unless ($child_pid) {
+        chdir "$wd/$repo" or die "failed to chdir $wd/$repo";
+        my @this_args = @args;
+        map {s/_REPO_/$repo/} @this_args;
+        open(EXEC, '-|', 'git', split(/ /, $command), @this_args);
+        my $o = '';
+        while (<EXEC>) {
+            chomp($_);
+            my $trimmed = substr($_, 0, 250);
+            $trimmed .= '...'
+                if !$v && length($trimmed) < length($_);
+            $o .= "$trimmed\n";
+        }
+        close(EXEC);
+        if ($? && $k) {
+            print STDERR "error: $?\n" if $v;
+            next;
+        }
+        else {
+            print STDERR "=================== $repo ===================\n$o\n";
+            die $? if $?;
+        }
+        exit 0
+            unless $parent_pid == $$;
     }
 }
