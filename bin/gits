@@ -65,7 +65,8 @@ foreach my $repo (@repos) {
             $parent_pid == $$ ? next : exit 0;
         }
         else {
-            print STDERR "=================== $repo ===================\n$o\n";
+            print STDERR "=================== $repo ===================\n$o\n"
+                if length($o) || $v;
             die $? if $?;
         }
         exit 0
