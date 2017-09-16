@@ -61,7 +61,7 @@ foreach my $repo (@repos) {
         }
         close(EXEC);
         if ($? && $k) {
-            print STDERR "error: $?\n" if $v;
+            print STDERR "=================== $repo ===================\nerror: $?\n" if $v;
             $parent_pid == $$ ? next : exit 0;
         }
         else {
