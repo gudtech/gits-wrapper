@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 
+use IPC::Shareable;
 use Cwd;
 my $wd = getcwd;
 my @args = @ARGV;
@@ -38,6 +39,15 @@ unless(@repos){
 }
 my $parent_pid = $$;
 my $children = 0;
+
+my %out;
+tie %out, 'IPC::Shareable', 'data', {
+    create    => 'yes',
+    exclusive => 0,
+    mode      => 0644,
+    destroy   => 'yes',
+} or die "tie failed: $@\n";
+
 foreach my $repo (@repos) {
     my $child_pid = $p ? fork : 0;
     if ($child_pid) {
@@ -61,12 +71,17 @@ foreach my $repo (@repos) {
         }
         close(EXEC);
         if ($? && $k) {
-            print STDERR "=================== $repo ===================\nerror: $?\n" if $v;
+            my $print = "=================== $repo ===================\nerror: $?\n";
+            if ($v) {
+                $p ? ($out{$repo} = $print) && print STDERR '.' : print STDERR $print;
+            }
             $parent_pid == $$ ? next : exit 0;
         }
         else {
-            print STDERR "=================== $repo ===================\n$o\n"
-                if length($o) || $v;
+            my $print = "=================== $repo ===================\n$o\n";
+            if (length($o) || $v) {
+                $p ? ($out{$repo} = $print) && print STDERR '.' : print STDERR $print;
+            }
             die $? if $?;
         }
         exit 0
@@ -75,3 +90,8 @@ foreach my $repo (@repos) {
 }
 
 wait for 1 .. $children;
+
+if (%out) {
+    print STDERR "\n\n";
+    print STDERR $out{$_} for sort { $a cmp $b } keys %out;
+}
