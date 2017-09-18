@@ -113,7 +113,9 @@ sub _repo_print {
     }
 
     print STDERR "=================== $repo ===================\n";
-    print STDERR "$output\n";
+        if !$f || $v;
+    print STDERR "$output\n"
+        if !$f || $v;
     print $fh "$output\n"
         if $f;
 
