@@ -12,24 +12,26 @@ while (my $str = pop @args) {
         $str =~ s/\/$//g;
         unshift @repos, $str;
     }
-    elsif ($str eq '-k') {
+    elsif ($str eq '-k' && !$k) {
         $k = 1;
     }
-    elsif ($str eq '-v') {
+    elsif ($str eq '-v' && !$v) {
         $v = 1;
     }
-    elsif ($str eq '-p') {
+    elsif ($str eq '-p' && !$p) {
         $p = 1;
-
-        # -p implies -k because it doesn't make sense to try to stop
-        # the child processes mid-way through the repo loop
-        $k = 1;
     }
     else {
         push @args, $str;
         last;
     }
 }
+
+
+# -p implies -k because it doesn't make sense to try to stop
+# the child processes mid-way through the repo loop
+$k = 1 if $p;
+
 unless(@repos){
     foreach my $str ( glob('*') ) {
         if (-d $str && -d "$str/.git") {
