@@ -45,12 +45,14 @@ my $parent_pid = $$;
 my $children = 0;
 
 my %out;
-tie %out, 'IPC::Shareable', 'data', {
-    create    => 'yes',
-    exclusive => 0,
-    mode      => 0644,
-    destroy   => 'yes',
-} or die "tie failed: $@\n";
+if ($p) {
+    tie %out, 'IPC::Shareable', 'data', {
+        create    => 'yes',
+        exclusive => 0,
+        mode      => 0644,
+        destroy   => 'yes',
+    } or die "tie failed: $@\n";
+}
 
 foreach my $repo (@repos) {
     my $child_pid = $p ? fork : 0;
