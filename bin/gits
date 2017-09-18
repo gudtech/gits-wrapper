@@ -114,7 +114,7 @@ sub _repo_print {
         open($fh, '>', $f);
     }
 
-    print STDERR "=================== $repo ===================\n";
+    print STDERR "=================== $repo ===================\n"
         if !$f || $v;
     print STDERR "$output\n"
         if !$f || $v;
