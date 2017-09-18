@@ -21,12 +21,14 @@ while (my $str = pop @args) {
     elsif ($str eq '-p' && !$p) {
         $p = 1;
     }
+    elsif ($str =~ /--file=(\S+)/ && !$f) {
+        $f = $1;
+    }
     else {
         push @args, $str;
         last;
     }
 }
-
 
 # -p implies -k because it doesn't make sense to try to stop
 # the child processes mid-way through the repo loop
@@ -72,20 +74,21 @@ foreach my $repo (@repos) {
             $o .= "$trimmed\n";
         }
         close(EXEC);
+
         if ($? && $k) {
-            my $print = "=================== $repo ===================\nerror: $?\n";
+            $o = "error: $?";
             if ($v) {
-                $p ? ($out{$repo} = $print) && print STDERR '.' : print STDERR $print;
+                $p ? ($out{$repo} = $o) && print STDERR '.' : _repo_print($repo, $o);
             }
             $parent_pid == $$ ? next : exit 0;
         }
         else {
-            my $print = "=================== $repo ===================\n$o\n";
             if (length($o) || $v) {
-                $p ? ($out{$repo} = $print) && print STDERR '.' : print STDERR $print;
+                $p ? ($out{$repo} = $o) && print STDERR '.' : _repo_print($repo, $o);
             }
             die $? if $?;
         }
+
         exit 0
             unless $parent_pid == $$;
     }
@@ -95,5 +98,27 @@ wait for 1 .. $children;
 
 if (%out) {
     print STDERR "\n\n";
-    print STDERR $out{$_} for sort { $a cmp $b } keys %out;
+    _repo_print($_, $out{$_}) for sort { $a cmp $b } keys %out;
+}
+
+sub _repo_print {
+    my ($repo, $output) = @_;
+
+    my $fh;
+    if ($f) {
+        chdir "$wd/$repo" or die "failed to chdir $wd/$repo";
+
+        $f =~ s/_REPO_/$repo/g;
+        open($fh, '>', $f);
+        print STDERR "printing to $f\n";
+    }
+
+    print STDERR "=================== $repo ===================\n";
+    print STDERR "$output\n";
+    print $fh "$output\n"
+        if $f;
+
+    if ($f) {
+        close($fh);
+    }
 }
