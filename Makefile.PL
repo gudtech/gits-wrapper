@@ -9,6 +9,6 @@ WriteMakefile(
     EXE_FILES => [qw'bin/gits'],
     PREREQ_PM => {
         'Cwd'            => 0,
-        'IPC::Shareable' => 0;
+        'IPC::Shareable' => 0,
     },
 );
