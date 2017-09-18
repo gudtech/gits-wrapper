@@ -107,11 +107,13 @@ sub _repo_print {
     my ($repo, $output) = @_;
 
     my $fh;
+    my $this_f;
     if ($f) {
         chdir "$wd/$repo" or die "failed to chdir $wd/$repo";
 
-        $f =~ s/_REPO_/$repo/g;
-        open($fh, '>', $f);
+        $this_f = "$f";
+        $this_f =~ s/_REPO_/$repo/g;
+        open($fh, '>', $this_f);
     }
 
     print STDERR "=================== $repo ===================\n"
