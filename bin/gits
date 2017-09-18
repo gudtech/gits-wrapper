@@ -110,7 +110,6 @@ sub _repo_print {
 
         $f =~ s/_REPO_/$repo/g;
         open($fh, '>', $f);
-        print STDERR "printing to $f\n";
     }
 
     print STDERR "=================== $repo ===================\n";
