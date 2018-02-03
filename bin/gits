@@ -1,129 +1,195 @@
 #!/usr/bin/perl
 
-use IPC::Shareable;
+use strict;
+use warnings;
 use Cwd;
-my $wd = getcwd;
-my @args = @ARGV;
-my $command = shift @args;
-my ($k, $v, $p);
-my @repos;
-while (my $str = pop @args) {
-    if (-d $str && -d "$str/.git") {
-        $str =~ s/\/$//g;
-        unshift @repos, $str;
-    }
-    elsif ($str eq '-k' && !$k) {
-        $k = 1;
-    }
-    elsif ($str eq '-v' && !$v) {
-        $v = 1;
-    }
-    elsif ($str eq '-p' && !$p) {
-        $p = 1;
-    }
-    elsif ($str =~ /--file=(\S+)/ && !$f) {
-        $f = $1;
+
+my $_WD = getcwd;
+my $_PARENT_PID = $$;
+my $_CHILDREN = 0;
+my $_TRIMMED_LINE_LENGTH = 250;
+my $_GIT_COMMAND = 'git';
+
+my ($repos, $params) = _parse_args(@ARGV);
+
+_process_repo($_, $params)
+    for @$repos;
+
+wait
+    for 1 .. $_CHILDREN;
+
+if ($params->{parallel} || $params->{outfile}) {
+    print "\n\n";
+
+    _flush_repo_output($_, $params)
+        for @$repos;
+}
+
+sub _execute_git_command {
+    my ($command) = @_;
+
+    open my $exec_fh, '-|', 'sh', '-c', '"$@" 2>&1', '--', $_GIT_COMMAND, @$command
+        or die "failed to execute git command: $!";
+
+    my @output;
+    push @output, $_
+        while <$exec_fh>;
+
+    close $exec_fh;
+
+    return $? >> 8, \@output;
+}
+
+sub _flush_repo_output {
+    my ($repo, $params) = @_;
+
+    my $repo_outfile = _get_repo_outfile($repo);
+    return
+        unless -f $repo_outfile;
+
+    open my $repo_output_fh, '<', $repo_outfile or die "failed to open filehandle: $!";
+
+    if ($params->{outfile}) {
+        open my $outfile_fh, '>', join('/', $_WD, $params->{outfile})
+            or die "failed to open filehandle: $!";
+        print $outfile_fh $_
+            while <$repo_output_fh>;
+        close $outfile_fh;
     }
     else {
-        push @args, $str;
-        last;
+        print $_
+            while <$repo_output_fh>;
     }
+
+    close $repo_output_fh;
+
+    _rm_outfile($repo);
+
+    return;
 }
 
-# -p implies -k because it doesn't make sense to try to stop
-# the child processes mid-way through the repo loop
-$k = 1 if $p;
+sub _get_repo_outfile { join('/', $_WD, shift, '.gits.out') }
 
-unless(@repos){
-    foreach my $str ( glob('*') ) {
-        if (-d $str && -d "$str/.git") {
-            push @repos, $str;
+sub _get_repo_header { "=================== @{[shift]} ===================\n" }
+
+sub _get_trimmed_output {
+    my ($output, $params) = @_;
+
+    my $trimmed = substr($output, 0, $_TRIMMED_LINE_LENGTH);
+
+    $trimmed .= "...\n"
+        if !$params->{verbose} && length($trimmed) < length($output);
+
+    return $trimmed;
+}
+
+sub _parse_args {
+    my @input_args = @_;
+    my %params;
+
+    my @repos;
+    while (my $arg = pop @input_args) {
+        if (-d $arg && -d "$arg/.git") {
+            $arg =~ s/\/$//g;
+            unshift @repos, $arg;
+        }
+        elsif ($arg eq '-i' && !$params{ignore_errors}) {
+            $params{ignore_errors} = 1;
+        }
+        elsif ($arg eq '-v' && !$params{verbose}) {
+            $params{verbose} = 1;
+        }
+        elsif ($arg eq '-p' && !$params{parallel}) {
+            $params{parallel} = 1;
+        }
+        elsif ($arg =~ /--file=(\S+)/ && !$params{outfile}) {
+            $params{outfile} = $1;
+        }
+        else {
+            push @{$params{command}}, @input_args, $arg;
+            last;
         }
     }
-}
-my $parent_pid = $$;
-my $children = 0;
 
-my %out;
-if ($p) {
-    tie %out, 'IPC::Shareable', 'data', {
-        create    => 'yes',
-        exclusive => 0,
-        mode      => 0644,
-        destroy   => 'yes',
-    } or die "tie failed: $@\n";
+    # parallel implies ignore_errors because it doesn't make sense to
+    # try to stop the child processes mid-way through the repo loop
+    $params{ignore_errors} = 1 if $params{parallel};
+
+    unless (@repos) {
+        foreach my $filename (glob '*') {
+            if (-d $filename && -d "$filename/.git") {
+                push @repos, $filename;
+            }
+        }
+    }
+
+    return \@repos, \%params;
 }
 
-foreach my $repo (@repos) {
-    my $child_pid = $p ? fork : 0;
+sub _print_repo_output {
+    my ($repo, $output, $params) = @_;
+
+    if ($params->{parallel} || $params->{outfile}) {
+        open my $output_fh, '>', _get_repo_outfile($repo)
+            or die "failed to open repo print filehandle: $!";
+        print $output_fh $output;
+        close $output_fh;
+    }
+    else {
+        print $output;
+    }
+}
+
+sub _process_repo {
+    my ($repo, $params) = @_;
+
+    _rm_outfile($repo);
+
+    my $child_pid = $params->{parallel} ? fork : 0;
     if ($child_pid) {
-        $children++;
+        $_CHILDREN++;
     }
     elsif (! defined $child_pid) {
         die "failed to fork";
     }
     else {
-        chdir "$wd/$repo" or die "failed to chdir $wd/$repo";
-        my @this_args = @args;
-        map {s/_REPO_/$repo/} @this_args;
-        open(EXEC, '-|', 'git', split(/ /, $command), @this_args);
-        my $o = '';
-        while (<EXEC>) {
-            chomp($_);
-            my $trimmed = substr($_, 0, 250);
-            $trimmed .= '...'
-                if !$v && length($trimmed) < length($_);
-            $o .= "$trimmed\n";
-        }
-        close(EXEC);
+        chdir "$_WD/$repo" or die "failed to chdir $_WD/$repo";
 
-        if ($? && $k) {
-            $o = "error: $?";
-            if ($v) {
-                $p ? ($out{$repo} = $o) && print STDERR '.' : _repo_print($repo, $o);
-            }
-            $parent_pid == $$ ? next : exit 0;
-        }
-        else {
-            if (length($o) || $v) {
-                $p ? ($out{$repo} = $o) && print STDERR '.' : _repo_print($repo, $o);
-            }
-            die $? if $?;
-        }
+        my @this_command = @{$params->{command}};
+        s/_REPO_/$repo/
+            for @this_command;
+
+        my ($exit_status, $command_output_lines) = _execute_git_command(\@this_command);
+
+        print '.'
+            if $params->{parallel} || $params->{outfile};
+
+        my $output = '';
+        $output = _get_repo_header($repo);
+        $output .= _stringified_command(@this_command) . "\n"
+            if $params->{verbose};
+        $output .= join('', map({ _get_trimmed_output($_, $params) } @$command_output_lines), "\n")
+            if @$command_output_lines;
+
+        _print_repo_output($repo, $output, $params)
+            if @$command_output_lines
+                || $params->{verbose}
+                || ($exit_status && !$params->{ignore_errors});
+
+        die "'@{[_stringified_command(@this_command)]}' exited with status $exit_status; bailing out\n"
+            if $exit_status && !$params->{ignore_errors};
 
         exit 0
-            unless $parent_pid == $$;
+            unless $_PARENT_PID == $$;
     }
 }
 
-wait for 1 .. $children;
+sub _rm_outfile {
+    my ($repo) = @_;
 
-if (%out) {
-    print STDERR "\n\n";
-    _repo_print($_, $out{$_}) for sort { $a cmp $b } keys %out;
+    `rm @{[_get_repo_outfile($repo)]}`
+        if -f _get_repo_outfile($repo)
+            && `grep "@{[_get_repo_header($repo)]}" @{[_get_repo_outfile($repo)]}`;
 }
 
-sub _repo_print {
-    my ($repo, $output) = @_;
-
-    my $fh;
-    my $this_f;
-    if ($f) {
-        chdir "$wd/$repo" or die "failed to chdir $wd/$repo";
-
-        $this_f = "$f";
-        $this_f =~ s/_REPO_/$repo/g;
-        open($fh, '>', $this_f);
-    }
-
-    print STDERR "=================== $repo ===================\n"
-        if !$f || $v;
-    print STDERR "$output\n"
-        if !$f || $v;
-    print $fh "$output\n"
-        if $f;
-
-    if ($f) {
-        close($fh);
-    }
-}
+sub _stringified_command { join(' ', $_GIT_COMMAND, @_) }
