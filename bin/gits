@@ -199,7 +199,8 @@ Options:
  repos  Any number of git repos to apply command to.  If no repos are provided, all repos in the
         current directory will be used.
     -i  Ignore git errors (and continue with next repo)
-    -v  Verbose output
+    -v  Verbose output.  Individual output lines are trimmed to 250 characters unless -v.  Some
+        other additional output is included with -v.
     -p  Run command on repos in parallel.  Implies -i.
 --file  Print git output to file
 
