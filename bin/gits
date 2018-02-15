@@ -206,6 +206,7 @@ Options:
 Examples:
 gits pull -p
 gits status gt-core gt-processor -p
+gits grep string_to_find -p
 EOF
 }
 
