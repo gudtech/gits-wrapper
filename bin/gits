@@ -87,6 +87,11 @@ sub _parse_args {
     my @input_args = @_;
     my %params;
 
+    if (join('', @input_args) =~ qr/^\s*(-h|--help)\s*$/) {
+        _print_usage();
+        exit 0;
+    }
+
     my @repos;
     while (my $arg = pop @input_args) {
         if (-d $arg && -d "$arg/.git") {
@@ -182,6 +187,26 @@ sub _process_repo {
         exit 0
             unless $_PARENT_PID == $$;
     }
+}
+
+sub _print_usage {
+    print <<'EOF';
+Wrapper to apply git commands to an arbitrary number of repos
+
+Usage: gits GIT_COMMAND [repos] [-k] [-i] [-p] [--file]
+
+Options:
+ repos  Any number of git repos to apply command to.  If no repos are provided, all repos in the
+        current directory will be used.
+    -i  Ignore git errors (and continue with next repo)
+    -v  Verbose output
+    -p  Run command on repos in parallel.  Implies -i.
+--file  Print git output to file
+
+Examples:
+gits pull -p
+gits status gt-core gt-processor -p
+EOF
 }
 
 sub _rm_outfile {
